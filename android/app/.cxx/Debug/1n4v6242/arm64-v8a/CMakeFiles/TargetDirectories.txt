@@ -1,0 +1,2 @@
+C:/Users/USER/Desktop/appp/nopp/android/app/.cxx/Debug/1n4v6242/arm64-v8a/CMakeFiles/edit_cache.dir
+C:/Users/USER/Desktop/appp/nopp/android/app/.cxx/Debug/1n4v6242/arm64-v8a/CMakeFiles/rebuild_cache.dir
