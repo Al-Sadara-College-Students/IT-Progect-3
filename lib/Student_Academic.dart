@@ -1,4 +1,7 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 /// هويّة الألوان والتنسيق البصري (AppColors)
 class AppColors {
@@ -104,9 +107,7 @@ class _StudentHomeDashboardState extends State<StudentHomeDashboard> {
                     subtitle: "فتح الكاميرا لمسح رمز الحضور (Dynamic QR)",
                     icon: Icons.qr_code_scanner_rounded,
                     isHighlighted: true,
-                    onTap: () {
-                      _showActionMessage(context, "جاري فتح الكاميرا لمسح رمز الأستاذ...");
-                    },
+                    onTap: _openScanAttendanceDialog,
                   ),
 
                   const SizedBox(height: 16),
@@ -132,6 +133,147 @@ class _StudentHomeDashboardState extends State<StudentHomeDashboard> {
           side: const BorderSide(color: AppColors.primaryGold),
           borderRadius: BorderRadius.circular(10),
         ),
+      ),
+    );
+  }
+
+  void _openScanAttendanceDialog() {
+    final TextEditingController lectureCodeCtrl = TextEditingController(text: 'CS-402');
+    bool isSubmitting = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            backgroundColor: AppColors.secondaryPurple,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(color: AppColors.primaryGold, width: 1.5),
+            ),
+            title: const Row(
+              children: [
+                Icon(Icons.qr_code_scanner_rounded, color: AppColors.accentGold),
+                SizedBox(width: 8),
+                Text(
+                  'تسجيل الحضور اللامركزي (P2P)',
+                  style: TextStyle(color: AppColors.textGold, fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'سيتم إرسال حزمة JSON لتسجيل الحضور مباشرة إلى هاتف الأستاذ عبر شبكة الـ Hotspot المحلية:',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryPurple,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.primaryGold.withOpacity(0.4)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('• الطالب: ${widget.studentName}', style: const TextStyle(color: Colors.white, fontSize: 12)),
+                        Text('• الرقم الأكاديمي: ${widget.studentId}', style: const TextStyle(color: AppColors.textGold, fontSize: 12)),
+                        const Text('• معرف الجهاز: A1:B2:C3:D4:E5:F6', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: lectureCodeCtrl,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    decoration: InputDecoration(
+                      labelText: 'رمز المحاضرة (Lecture ID)',
+                      labelStyle: const TextStyle(color: AppColors.textGold, fontSize: 12),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: AppColors.primaryGold.withOpacity(0.5)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: AppColors.accentGold),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                child: const Text('إلغاء', style: TextStyle(color: Colors.white60)),
+              ),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryGold,
+                  foregroundColor: AppColors.primaryPurple,
+                ),
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        setDialogState(() => isSubmitting = true);
+                        final payload = {
+                          'action': 'submit_attendance',
+                          'student_id': widget.studentId,
+                          'device_mac_address': 'A1:B2:C3:D4:E5:F6',
+                          'lecture_id': lectureCodeCtrl.text.trim().isEmpty ? 'CS-402' : lectureCodeCtrl.text.trim(),
+                        };
+
+                        String responseMsg = '';
+                        bool isSuccess = false;
+
+                        try {
+                          final host = Platform.isAndroid ? '10.0.2.2' : '127.0.0.1';
+final url = Uri.parse('http://127.0.0.1:8000/api/attendance/sync/');                                                    final response = await http
+                              .post(
+                                url,
+                                headers: {'Content-Type': 'application/json'},
+                                body: jsonEncode(payload),
+                              )
+                              .timeout(const Duration(seconds: 3));
+
+                          if (response.statusCode == 200) {
+                            final data = jsonDecode(response.body);
+                            responseMsg = data['message'] ?? 'تم تأكيد الحضور بنجاح!';
+                            isSuccess = true;
+                          } else {
+                            responseMsg = 'رفض الخادم الطلب: ${response.statusCode}';
+                          }
+                        } catch (e) {
+                          responseMsg = 'تعذر الاتصال بقاعدة بيانات Django/PostgreSQL';
+                          isSuccess = false;
+                        }
+
+                        if (!dialogCtx.mounted) return;
+                        Navigator.pop(dialogCtx);
+                        if (!mounted) return;
+                        _showActionMessage(
+                          context,
+                          isSuccess ? '✓ $responseMsg' : 'تعذر الاتصال بخادم الأستاذ: $responseMsg',
+                        );
+                      },
+                icon: isSubmitting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryPurple),
+                      )
+                    : const Icon(Icons.send_rounded, size: 16),
+                label: const Text('تأكيد الحضور (Handshake)', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

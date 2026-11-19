@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'student_manual_input_screen.dart';
+import 'professor_registration_screen.dart';
 
 /// هويّة الألوان والتنسيق البصري (AppColors)
 class AppColors {
@@ -50,16 +51,10 @@ class OnboardingScreen extends StatefulWidget {
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  // متحكمات حقول إدخال الأستاذ
-  final _profNameController = TextEditingController();
-  final _profPhoneController = TextEditingController();
-
   final ValueNotifier<bool> _isLoading = ValueNotifier(false);
 
   @override
   void dispose() {
-    _profNameController.dispose();
-    _profPhoneController.dispose();
     _isLoading.dispose();
     super.dispose();
   }
@@ -88,68 +83,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _showSnackBar(
       "تم مسح البطاقة بنجاح! تم التقاط الرقم ($simulatedStudentId) والربط بالجهاز ($simulatedDeviceMac).",
       isError: false,
-    );
-  }
-
-  /// 2. مسار الأستاذ: طلب تفعيل الحساب لدى المشرف
-  Future<void> _handleProfessorActivationRequest() async {
-    final name = _profNameController.text.trim();
-    final phone = _profPhoneController.text.trim();
-
-    if (name.isEmpty || phone.isEmpty) {
-      _showSnackBar("يرجى إدخال جميع الحقول المطلوبة لأستاذ المادة", isError: true);
-      return;
-    }
-
-    _isLoading.value = true;
-
-    final requestBody = {
-      "action": "professor_activation_request",
-      "full_name": name,
-      "phone_number": phone,
-      "status": "pending_verification"
-    };
-
-    debugPrint("Sending Professor Request: ${jsonEncode(requestBody)}");
-
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (!mounted) return;
-    _isLoading.value = false;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.secondaryPurple,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: AppColors.primaryGold, width: 2),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.check_circle_outline, color: AppColors.accentGold, size: 28),
-            SizedBox(width: 10),
-            Text(
-              "تم إرسال الطلب",
-              style: TextStyle(color: AppColors.textGold, fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-        content: const Text(
-          "تم إرسال طلبكم بنجاح، سيقوم مسؤول النظام بمراجعة البيانات وتفعيل الحساب عبر البريد الجامعي.",
-          style: TextStyle(color: AppColors.textWhite, fontSize: 14, height: 1.5),
-        ),
-        actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primaryGold,
-              foregroundColor: AppColors.primaryPurple,
-            ),
-            onPressed: () => Navigator.pop(context),
-            child: const Text("حسناً", style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
     );
   }
 
@@ -231,9 +164,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     ),
                     const SizedBox(height: 20),
                     ProfessorAccessCard(
-                      nameController: _profNameController,
-                      phoneController: _profPhoneController,
-                      onSubmit: _handleProfessorActivationRequest,
+                      onRegisterTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const ProfessorRegistrationScreen(),
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 30),
                     const FooterSection(),
@@ -439,15 +377,11 @@ class StudentAccessCard extends StatelessWidget {
 
 /// بطاقة "حساب أستاذ" (Professor Access Card)
 class ProfessorAccessCard extends StatelessWidget {
-  final TextEditingController nameController;
-  final TextEditingController phoneController;
-  final VoidCallback onSubmit;
+  final VoidCallback onRegisterTap;
 
   const ProfessorAccessCard({
     super.key,
-    required this.nameController,
-    required this.phoneController,
-    required this.onSubmit,
+    required this.onRegisterTap,
   });
 
   @override
@@ -458,7 +392,7 @@ class ProfessorAccessCard extends StatelessWidget {
         color: AppColors.cardSurface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: AppColors.primaryGold.withOpacity(0.6), width: 1.5),
+            color: AppColors.primaryGold.withValues(alpha: 0.6), width: 1.5),
         boxShadow: const [
           BoxShadow(
             color: Colors.black26,
@@ -487,73 +421,26 @@ class ProfessorAccessCard extends StatelessWidget {
           ),
           const Divider(
               color: AppColors.primaryGold, thickness: 0.5, height: 20),
-          TextField(
-            controller: nameController,
-            style: const TextStyle(color: AppColors.textWhite, fontSize: 14),
-            decoration: InputDecoration(
-              labelText: "الاسم الثلاثي للأستاذ",
-              labelStyle:
-                  const TextStyle(color: AppColors.textGold, fontSize: 13),
-              prefixIcon: const Icon(Icons.person_outline,
-                  color: AppColors.accentGold, size: 20),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide:
-                    BorderSide(color: AppColors.primaryGold.withOpacity(0.5)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide:
-                    const BorderSide(color: AppColors.accentGold, width: 1.5),
-              ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            ),
+          const Text(
+            "تسجيل ودخول الأستاذ ومطابقة معرف الجهاز الآمن (Device UUID Binding):",
+            style: TextStyle(color: AppColors.textWhite, fontSize: 13, height: 1.4),
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: phoneController,
-            keyboardType: TextInputType.phone,
-            style: const TextStyle(color: AppColors.textWhite, fontSize: 14),
-            decoration: InputDecoration(
-              labelText: "رقم المحمول المربوط بحساب الواتس آب",
-              labelStyle:
-                  const TextStyle(color: AppColors.textGold, fontSize: 13),
-              prefixIcon: const Icon(Icons.phone_android_outlined,
-                  color: AppColors.accentGold, size: 20),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide:
-                    BorderSide(color: AppColors.primaryGold.withOpacity(0.5)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide:
-                    const BorderSide(color: AppColors.accentGold, width: 1.5),
-              ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            ),
-          ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.secondaryPurple,
-              foregroundColor: AppColors.textGold,
-              padding: const EdgeInsets.symmetric(vertical: 12),
+              backgroundColor: AppColors.primaryGold,
+              foregroundColor: AppColors.primaryPurple,
+              padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 10),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
-                side:
-                    const BorderSide(color: AppColors.primaryGold, width: 1.5),
               ),
-              elevation: 3,
+              elevation: 4,
             ),
-            onPressed: onSubmit,
-            icon: const Icon(Icons.send_rounded,
-                size: 18, color: AppColors.accentGold),
+            onPressed: onRegisterTap,
+            icon: const Icon(Icons.how_to_reg_rounded, size: 20),
             label: const Text(
-              "إرسال طلب التفعيل إلى الإدارة",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+              "تسجيل / دخول الأستاذ",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
             ),
           ),
         ],

@@ -58,6 +58,12 @@ class _StudentManualInputScreenState extends State<StudentManualInputScreen> {
     return deviceId;
   }
 
+  void _setSelectedDepartment(String? department) {
+    setState(() {
+      _selectedDepartment = department;
+    });
+  }
+
   // دالة الإرسال والتحقق من مطابقة البيانات وربط الجهاز
   Future<void> _submitForm() async {
     if (_formKey.currentState!.validate()) {
@@ -74,10 +80,9 @@ class _StudentManualInputScreenState extends State<StudentManualInputScreen> {
         // جلب معرف الجهاز الفريد آلياً
         String deviceId = await _getUniqueDeviceId();
 
-        // رابط السيرفر (تأكد من تغييره إلى 10.0.2.2 لمحاكي أندرويد أو آي بي حقيقي)
-        final url = Uri.parse('http://127.0.0.1:8000/api/student/register/');
-
-        final response = await http.post(
+        // 10.0.2.2 عنوان مضيف الكمبيوتر من محاكي Android.
+        // على iOS Simulator أو تطبيق سطح المكتب يمكن استخدام localhost.
+          final url = Uri.parse('http://127.0.0.1:8000/api/student/register/');             final response = await http.post(
           url,
           headers: {"Content-Type": "application/json"},
           body: jsonEncode({
@@ -100,6 +105,7 @@ class _StudentManualInputScreenState extends State<StudentManualInputScreen> {
           await prefs.setBool('isLoggedIn', true);
           await prefs.setString('studentId', _studentIdController.text.trim());
 
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(responseData['message'] ?? 'تم التحقق وتأكيد البيانات بنجاح!'),
@@ -265,7 +271,7 @@ class _StudentFormFieldsSection extends StatelessWidget {
               child: Text(dept, style: const TextStyle(color: Colors.white)),
             );
           }).toList(),
-          onChanged: (val) => state.setState(() => state._selectedDepartment = val),
+          onChanged: state._setSelectedDepartment,
           validator: (val) => val == null ? 'يرجى اختيار القسم الدراسي' : null,
         ),
         const SizedBox(height: 40),

@@ -12,6 +12,9 @@ dependencies:
   http: ^1.2.0
   device_info_plus: ^10.1.0
   shared_preferences: ^2.2.2
+  shelf: ^1.4.2
+  qr_flutter: ^4.1.0
+  uuid: ^4.6.0
 
 dev_dependencies:
   flutter_test:
