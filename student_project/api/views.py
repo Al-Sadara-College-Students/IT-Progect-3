@@ -46,47 +46,73 @@ def register_student(request):
 
 @api_view(['POST'])
 def login_or_register_professor(request):
+    """التحقق من هوية الأستاذ المسجل مسبقاً في قاعدة البيانات وربط الجهاز عند السماح."""
     full_name = str(request.data.get('full_name', '')).strip()
     academic_id = str(request.data.get('academic_id', '')).strip()
     device_uuid = str(request.data.get('device_uuid', '')).strip()
     department = str(request.data.get('department', '')).strip()
 
     if not all((full_name, academic_id, device_uuid)):
-        return Response({'error': 'الاسم والرقم الأكاديمي ومعرف الجهاز مطلوبة.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'error': 'الاسم والرقم الأكاديمي ومعرف الجهاز مطلوبة.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     try:
         professor = Professor.objects.filter(academic_id=academic_id).first()
-        if professor:
-            if professor.full_name.strip().lower() != full_name.lower():
-                return Response({'error': 'الاسم غير مطابق للرقم الأكاديمي المسجل.'}, status=status.HTTP_400_BAD_REQUEST)
-            if professor.device_uuid and professor.device_uuid != device_uuid:
-                return Response({'error': 'هذا الحساب الأكاديمي مربوط بجهاز آخر.'}, status=status.HTTP_403_FORBIDDEN)
-            if not professor.device_uuid:
-                professor.device_uuid = device_uuid
-            if department:
-                professor.department = department
-            professor.save()
-        else:
-            professor = Professor.objects.create(
-                academic_id=academic_id,
-                full_name=full_name,
-                department=department or 'علوم الحاسب وهندسة البرمجيات',
-                device_uuid=device_uuid,
+
+        # منع إنشاء حسابات جديدة عشوائية: يجب أن يكون الأستاذ مسجلاً مسبقاً
+        if not professor:
+            return Response(
+                {'error': 'هذا الرقم الأكاديمي غير مسجل في النظام.'},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
-        return Response({
-            'message': 'تم التحقق وتأكيد حساب الأستاذ بنجاح!',
-            'professor': {
-                'academic_id': professor.academic_id,
-                'full_name': professor.full_name,
-                'department': professor.department,
-                'device_uuid': professor.device_uuid,
+        # التحقق من تطابق الاسم مع السجل المسجل
+        if professor.full_name.strip().lower() != full_name.lower():
+            return Response(
+                {'error': 'الاسم غير مطابق للرقم الأكاديمي المسجل.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # التحقق من أن الحساب مفعّل/معتمد في قاعدة البيانات (إذا كان الحقل موجوداً في الموديل)
+        if hasattr(professor, 'is_verified') and not professor.is_verified:
+            return Response(
+                {'error': 'الحساب غير مفعّل بعد من الإدارة.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # منع الدخول إذا كان الحساب مربوطاً بجهاز هاتف آخر
+        if professor.device_uuid and professor.device_uuid != device_uuid:
+            return Response(
+                {'error': 'هذا الحساب الأكاديمي مربوط بجهاز آخر.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # ربط معرف الجهاز لأول مرة وتحديث القسم إذا أُرسل
+        if not professor.device_uuid:
+            professor.device_uuid = device_uuid
+        if department:
+            professor.department = department
+        professor.save()
+
+        return Response(
+            {
+                'message': 'تم التحقق وتأكيد حساب الأستاذ بنجاح!',
+                'professor': {
+                    'academic_id': professor.academic_id,
+                    'full_name': professor.full_name,
+                    'department': professor.department,
+                    'device_uuid': professor.device_uuid,
+                },
             },
-        }, status=status.HTTP_200_OK)
+            status=status.HTTP_200_OK,
+        )
     except Exception as exc:
-        return Response({'error': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
+        return Response(
+            {'error': str(exc)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 @api_view(['POST'])
 def sync_attendance(request):
     action = str(request.data.get('action', '')).strip()
@@ -240,3 +266,37 @@ def academic_data(request):
         for item in CurriculumProgress.objects.all()[:100]
     ]
     return Response({'lectures': lectures, 'curriculum_progress': progress}, status=status.HTTP_200_OK)
+
+@api_view(['POST'])
+def qr_login_student(request):
+    qr_code_data = str(request.data.get('qr_code_data', '')).strip()
+    device_uuid = str(request.data.get('device_uuid', '')).strip()
+
+    if not qr_code_data:
+        return Response({'error': 'بيانات QR البطاقة مطلوبة.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    cleaned_id = qr_code_data.replace('STUDENT_QR_', '').strip()
+    student = (
+        Student.objects.filter(student_id=qr_code_data).first()
+        or Student.objects.filter(student_id=cleaned_id).first()
+    )
+
+    if not student:
+        return Response({'error': 'بطاقة الطالب غير مسجلة في قاعدة البيانات.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if device_uuid:
+        if not student.device_unique_id:
+            student.device_unique_id = device_uuid
+            student.status = 'active'
+            student.save(update_fields=['device_unique_id', 'status'])
+        elif student.device_unique_id != device_uuid:
+            return Response({'error': 'هذا الحساب مرتبط بجهاز آخر.'}, status=status.HTTP_403_FORBIDDEN)
+
+    return Response({
+        'message': 'تم التحقق من البطاقة وتسجيل الدخول بنجاح!',
+        'student': {
+            'student_id': student.student_id,
+            'full_name': student.full_name,
+            'department': student.department,
+        },
+    }, status=status.HTTP_200_OK)
